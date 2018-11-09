@@ -1,0 +1,137 @@
+[globals](+)
+DISA=
+DDI=55
+DDD=96
+
+[default](+)
+
+include => branch
+include => ivr-exten
+include => queue
+include => service
+include => disa
+
+[disa]
+exten => 0,1,Disa(no-password)
+
+exten => _XX.,1,Noop(Rota de saida)
+exten => _XX.,n,Goto(out,${EXTEN},1)
+
+[out]
+exten => _XX.,1,Noop(Rota de saida)
+exten => _XX.,n,Agi(/etc/trxcall/api/bin/console,pbx:out,initVar,${EXTEN})
+exten => _XX.,n,GotoIf($[${EXISTS(${ERROR_MESSAGE})}=1]?out,s-ERROR,1)
+exten => _XX.,n(NEXT),Set(DIALOUT_STRING=)
+exten => _XX.,n,Agi(/etc/trxcall/api/bin/console,pbx:out,nextTrunk,${EXTEN})
+exten => _XX.,n,GotoIf($[${EXISTS(${ERROR_MESSAGE})}=1]?out,s-ERROR,1)
+exten => _XX.,n,NoOp(${PAGE}_${DIALOUT_STRING})
+exten => _XX.,n,GotoIf($["${DIALOUT_STRING}" = ""]}?out,s-CONGESTION,1)
+
+exten => _XX.,n,NoOp(CURCALLS ${SIPPEER(${DIALOUT_TRUNK},curcalls)})
+exten => _XX.,n,NoOp(LIMIT ${SIPPEER(${DIALOUT_TRUNK},limit)})
+
+exten => _XX.,n,GotoIf($[${SIPPEER(${DIALOUT_TRUNK},limit)} > 0 & ${SIPPEER(${DIALOUT_TRUNK},limit)} <= ${SIPPEER(${DIALOUT_TRUNK},curcalls)}]?NEXT)
+exten => _XX.,n,MixMonitor(OUT_${CDR(src)}_${EXTEN}_${UNIQUEID}.wav)
+exten => _XX.,n,Set(CDR(monitor)=OUT_${CDR(src)}_${EXTEN}_${UNIQUEID}.wav)
+exten => _XX.,n,Set(CALLERID(num)=${DIALOUT_TRUNK})
+exten => _XX.,n,Dial(${DIALOUT_STRING},60,tTL(3600000))
+exten => _XX.,n,NoOp(${DIALSTATUS})
+exten => _XX.,n,GotoIf($["${DIALSTATUS}" = "CHANUNAVAIL"]?NEXT)
+exten => _XX.,n,GotoIf($["${DIALSTATUS}" = "CONGESTION"]?NEXT)
+exten => _XX.,n,GotoIf($["${DIALSTATUS}" = "BUSY"]?NEXT)
+exten => _XX.,n,Goto(out,s-${DIALSTATUS},1)
+
+exten => s-NOANSWER,1,Hangup(5)
+exten => s-CANCEL,1,Hangup(5)
+exten => s-BUSY,1,Busy(5)
+exten => s-CONGESTION,1,Congestion(5)
+exten => s-CHANUNAVAIL,1,Busy(5)
+exten => s-ERROR,1,Noop(${ERROR_MESSAGE})
+
+[in]
+exten => _X,1,Noop(Rota de entrada)
+exten => _X,n,Agi(/etc/trxcall/api/bin/console,pbx:in,goto,${EXTEN})
+exten => _X,n,MixMonitor(IN_${CDR(src)}_${EXTEN}_${UNIQUEID}.wav)
+exten => _X,n,Set(CDR(monitor)=IN_${CDR(src)}_${EXTEN}_${UNIQUEID}.wav)
+exten => _X,n,Noop(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+exten => _X,n,Goto(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+
+exten => _X.,1,Noop(Rota de entrada)
+exten => _X.,n,Agi(/etc/trxcall/api/bin/console,pbx:in,goto,${EXTEN})
+exten => _X.,n,MixMonitor(IN_${CDR(src)}_${EXTEN}_${UNIQUEID}.wav)
+exten => _X.,n,Set(CDR(monitor)=IN_${CDR(src)}_${EXTEN}_${UNIQUEID}.wav)
+exten => _X.,n,Noop(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+exten => _X.,n,Goto(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+
+[branch]
+{% for branch in branchs %}
+    exten => {{ branch.defaultuser }},1,Goto(branch-dial,{{ branch.defaultuser }},1)
+{% endfor %}
+{% for branch in branchs %}
+    exten => {{ branch.defaultuser }},hint,SIP/{{ branch.defaultuser }}
+{% endfor %}
+
+[service]
+exten => _*555,1,Goto(service,*555${CALLERID(num)},1)
+
+{% for branch in branchs %}
+    exten => _*555{{ branch.defaultuser }},1,VoiceMailMain({{ branch.defaultuser }}@trxcall)
+{% endfor %}
+
+[branch-dial]
+exten => _X.,1,Noop(DIAL Branch)
+exten => _X.,n,Agi(/etc/trxcall/api/bin/console,pbx:branch,goto,${EXTEN},ALWAYS)
+exten => _X.,n,GotoIf($[${EXISTS(${GOTO_CONTEXT})}=1]?GOTO)
+exten => _X.,n,Dial(SIP/${EXTEN},60,T)
+exten => _X.,n,Agi(/etc/trxcall/api/bin/console,pbx:branch,goto,${EXTEN},${DIALSTATUS})
+exten => _X.,n,GotoIf($[${EXISTS(${GOTO_CONTEXT})}=1]?GOTO:VOICEMAIL)
+exten => _X.,n(GOTO),Goto(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+exten => _X.,n,Goto(HANGUP)
+exten => _X.,n(VOICEMAIL),Voicemail(${EXTEN}@trxcall)
+exten => _X.,n(HANGUP),Hangup
+
+[queue]
+{% for queue in queues %}
+    exten => {{ queue.name }},1,Queue({{ queue.name }})
+{% endfor %}
+
+[ivr-exten]
+{% for ivr in ivrs %}
+    exten => {{ ivr.id }},1,Set(IVR_EXTEN=${EXTEN})
+    exten => {{ ivr.id }},n,Goto(ivr-dial,s,1)
+{% endfor %}
+
+[ivr-dial]
+
+;INICIANDO VARIAVEIS DA URA
+exten => s,1,NoOp(Inicio do IVR)
+exten => s,n,Agi(/etc/trxcall/api/bin/console,pbx:ivr,initVar,${IVR_EXTEN})
+
+;CHECA SE ULTRAPASSOU O LIMIT, CASO SIM VAI PARA O FIM DA URA
+exten => s,n,GotoIf($[${EXISTS(${IVR_AUDIO_WELCOME})}=0]?INIT)
+exten => s,n,Background(${IVR_AUDIO_WELCOME})
+exten => s,n(INIT),GotoIf($[${IVR_TRY} > ${IVR_MAX_TRY}]?END)
+
+;LE A OPÇÃO DIGITADO PELO USUARIO
+exten => s,n,Read(IVR_OPTION,${IVR_AUDIO_READ},${IVR_MAX_DIGIT},${IVR_OPTION},${IVR_ATTEMPTS},${IVR_TIMEOUT})
+exten => s,n,Set(IVR_TRY=$[${IVR_TRY}+1])
+
+;ENVIA A LIGAÇÃO PARA LUGAR CERTO
+exten => s,n,GotoIf($[${EXISTS(${IVR_OPTION})}=0]?INIT)
+exten => s,n,Goto(${IVR_OPTION},1)
+
+;FINALIZA A LIGACAO
+exten => s,n(END),NoOp(END)
+
+;===========================OPÇÕES==================================
+exten => _[0-9],1,NoOp(OPT${EXTEN})
+exten => _[0-9],n,Agi(/etc/trxcall/api/bin/console,pbx:ivr,gotoOption,${IVR_EXTEN})
+exten => _[0-9],n,Goto(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+
+exten => _[0-9].,1,NoOp(OPT${EXTEN})
+exten => _[0-9].,n,Agi(/etc/trxcall/api/bin/console,pbx:ivr,gotoOption,${IVR_EXTEN})
+exten => _[0-9].,n,Goto(${GOTO_CONTEXT},${GOTO_EXTEN},${GOTO_PRIORITY})
+
+;QUANDO NAO ENCONTRA EXTEN
+exten => i,1,NoOp(NOT)
+exten => i,n,Goto(s,INIT)

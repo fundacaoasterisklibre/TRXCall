@@ -1,0 +1,8 @@
+{% set context = '' %}
+{% for config in configs %}
+    {% if config.context != context %}
+        {% set context = config.context %}
+        [{{ context }}]
+    {% endif %}
+    {{ config.id }} = {{ config.value }}
+{% endfor %}

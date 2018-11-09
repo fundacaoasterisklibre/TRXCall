@@ -1,0 +1,16 @@
+{% for branch in branchs %}
+    {% if branch.registertrying == 'yes' %}
+        register => {{ branch.defaultuser }}:{{ branch.secret }}:{{ branch.defaultuser}}@{{ branch.ipaddr}}/{{ branch.defaultuser }}
+    {% endif %}
+{% endfor %}
+
+
+{% for branch in branchs %}
+    [{{ branch.defaultuser }}]
+    {% for key, info in branch %}
+        {% if info is not empty %}
+            {{ key }}={{ info }}
+        {% endif %}
+    {% endfor %}
+
+{% endfor %}

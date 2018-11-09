@@ -1,0 +1,51 @@
+# Put parameters here that don't need to change on each machine where the app is deployed
+# https://symfony.com/doc/current/best_practices/configuration.html#application-related-configuration
+parameters:
+    locale: 'en'
+    license:
+        key: TRXCALL
+    agi:
+        path: /bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/usr/X11R6/bin:/usr/local/apache/bin
+
+services:
+    # default configuration for services in *this* file
+    _defaults:
+        autowire: true      # Automatically injects dependencies in your services.
+        autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+        public: false       # Allows optimizing the container by removing unused services; this also means
+                            # fetching services directly from the container via $container->get() won't work.
+                            # The best practice is to be explicit about your dependencies anyway.
+
+    # makes classes in src/ available to be used as services
+    # this creates a service per class whose id is the fully-qualified class name
+    App\:
+        resource: '../src/*'
+        exclude: '../src/{Entity,Migrations,Tests}'
+
+    # controllers are imported separately to make sure services can be injected
+    # as action arguments even if you don't extend any base controller class
+    App\Controller\:
+        resource: '../src/Controller'
+        tags: ['controller.service_arguments']
+
+    # add more service definitions when explicit configuration is needed
+    # please note that last definitions always *replace* previous ones
+
+    app.exception_listener:
+        class: App\Listener\ExceptionListener
+        arguments: ['@doctrine.orm.default_entity_manager']
+        tags:
+            - { name: kernel.event_listener, event: kernel.exception }
+
+    app.dao:
+        class: App\Service\DaoService
+        arguments: ['@doctrine.orm.default_entity_manager', '@validator']
+
+    kernel.event_listener.json_request_transformer:
+        class: App\Listener\JsonRequestTransformerListener
+        tags:
+          - { name: kernel.event_listener, event: kernel.request, method: onKernelRequest, priority: 100 }
+
+    auth_user_provider:
+        class: App\Security\ApiKeyUserProvider
+        arguments: ['@doctrine.orm.default_entity_manager']

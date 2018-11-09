@@ -1,0 +1,34 @@
+security:
+    # https://symfony.com/doc/current/security.html#where-do-users-come-from-user-providers
+    encoders:
+        App\Entity\User:
+            algorithm: sha512
+            encode_as_base64: false
+            iterations: 1
+
+    providers:
+        api_key_user_provider:
+            id: auth_user_provider
+
+    firewalls:
+        dev:
+            pattern: ^/(_(profiler|wdt)|css|images|js)/
+            security: false
+        auth_area:
+            pattern: ^/api/auth.(login|refresh)
+            security: false
+            anonymous: true
+        secured_area:
+            pattern: ^/api
+            security: true
+#            anonymous: true
+            stateless: false
+            simple_preauth:
+                authenticator: App\Security\ApiKeyAuthenticator
+            provider: api_key_user_provider
+        main:
+            pattern: ^/
+            anonymous: true
+
+    access_control:
+        - { path: ^/api, roles: ROLE_USER }

@@ -1,0 +1,77 @@
+[default](+)
+
+include => branch
+include => ivr-exten
+include => disa
+
+[disa]
+exten => 0,1,Disa(no-password)
+
+exten => _0XXXXXXX.,1,Noop(Rota de saida)
+exten => _0XXXXXXX.,n,Goto(out,${EXTEN:1},1)
+
+[out]
+exten => _XXXXXXX.,1,Noop(Rota de saida)
+exten => _XXXXXXX.,n,Agi(/etc/trxcall/api/bin/console,pbx:out,initVar,${EXTEN})
+exten => _XXXXXXX.,n(NEXT),Set(TRUNK=)
+exten => _XXXXXXX.,n,Agi(/etc/trxcall/api/bin/console,pbx:out,nextTrunk,${EXTEN})
+exten => _XXXXXXX.,n,GotoIf($["${TRUNK}" = ""]}?s-CONGESTION)
+exten => _XXXXXXX.,n,Dial(Local/${EXTEN}@${TRUNK})
+exten => _XXXXXXX.,n,GotoIf($["${DIALSTATUS}" = "CHANUNAVAIL"]?NEXT)
+exten => _XXXXXXX.,n,GotoIf($["${DIALSTATUS}" = "CONGESTION"]?NEXT)
+exten => _XXXXXXX.,n,Goto(out,s-${DIALSTATUS},1)
+
+exten => s-NOANSWER,1,Hangup
+exten => s-CANCEL,1,Hangup
+exten => s-BUSY,1,Busy
+exten => s-CONGESTION,1,Congestion
+exten => s-CHANUNAVAIL,1,Busy
+
+[in]
+exten => _X,1,Noop(Rota de entrada)
+exten => _X,n,Agi(/etc/trxcall/api/bin/console,pbx:in,${EXTEN})
+exten => _X,n,Goto(${GOTO_CONTEXT},${GOTO_EXTEN},1)
+
+exten => _X.,1,Noop(Rota de entrada)
+exten => _X.,n,Agi(/etc/trxcall/api/bin/console,pbx:in,${EXTEN})
+exten => _X,n,Goto(${GOTO_CONTEXT},${GOTO_EXTEN},1)
+
+[branch]
+{% for branch in branchs %}
+    exten => {{ branch.defaultuser }},1,Dial(SIP/{{ branch.defaultuser }})
+{% endfor %}
+{% for branch in branchs %}
+    exten => {{ branch.defaultuser }},hint,SIP/{{ branch.defaultuser }}
+{% endfor %}
+
+[ivr-exten]
+switch => Realtime/ivr-exten
+
+[ivr-dial]
+
+;INICIANDO VARIAVEIS DA URA
+exten => s,1,NoOp(Inicio do IVR)
+exten => s,n,Agi(/etc/trxcall/api/bin/console,pbx:ivr,initVar,${IVR_EXTEN})
+
+;CHECA SE ULTRAPASSOU O LIMIT, CASO SIM VAI PARA O FIM DA URA
+exten => s,n(INIT),GotoIf($[${IVR_TRY} > ${IVR_MAX_TRY}]?END)
+
+;LE A OPÇÃO DIGITADO PELO USUARIO
+exten => s,n,Read(IVR_OPTION,${IVR_AUDIO_READ},${IVR_MAX_DIGIT},${IVR_OPTION},${IVR_ATTEMPTS},${IVR_TIMEOUT})
+exten => s,n,Set(IVR_TRY=$[${IVR_TRY}+1])
+
+;ENVIA A LIGAÇÃO PARA LUGAR CERTO
+exten => s,n,GotoIf($[LEN(${IVR_OPTION})==0]?INIT)
+exten => s,n,Goto(${IVR_OPTION},1)
+
+;FINALIZA A LIGACAO
+exten => s,n(END),NoOp(END)
+
+;===========================OPÇÕES==================================
+exten => _[0-9],1,NoOp(OPT${EXTEN})
+exten => _[0-9],n,Agi(/etc/trxcall/api/bin/console,pbx:ivr,gotoOption,${IVR_EXTEN})
+exten => _[0-9],n,Goto(${IVR_GOTO_CONTEXT},${IVR_GOTO_EXTEN},${IVR_GOTO_PRIORITY})
+
+;QUANDO NAO ENCONTRA EXTEN
+exten => i,1,NoOp(NOT)
+exten => i,n,Goto(s,INIT)

@@ -1,0 +1,16 @@
+version: '2'
+services:
+  app:
+    container_name: trx.app
+    build: .docker/php
+    volumes:
+      - .:/app
+      - ./var/log:/app/var/log
+      - ./var/cache:/app/var/cache
+  nginx:
+    container_name: trx.nginx
+    build: .docker/nginx
+    volumes_from:
+      - app
+    ports:
+      - "80:80"

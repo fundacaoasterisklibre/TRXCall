@@ -1,0 +1,4 @@
+[options]
+{% for config in asteriskConfigs %}
+    {{ config.id }} = {{ config.value }}
+{% endfor %}
